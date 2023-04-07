@@ -368,6 +368,11 @@ func (in *ClockOffset) DeepCopyInto(out *ClockOffset) {
 		*out = new(ClockOffsetTimezone)
 		**out = **in
 	}
+	if in.LocalTime != nil {
+		in, out := &in.LocalTime, &out.LocalTime
+		*out = new(ClockOffsetLocalTime)
+		**out = **in
+	}
 	return
 }
 

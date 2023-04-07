@@ -842,6 +842,8 @@ type ClockOffset struct {
 	// Timezone sets the guest clock to the specified timezone.
 	// Zone name follows the TZ environment variable format (e.g. 'America/New_York').
 	Timezone *ClockOffsetTimezone `json:"timezone,omitempty"`
+	//LocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.
+	LocalTime *ClockOffsetLocalTime `json:"localtime,omitempty"`
 }
 
 // UTC sets the guest clock to UTC on each boot.
@@ -854,6 +856,9 @@ type ClockOffsetUTC struct {
 // ClockOffsetTimezone sets the guest clock to the specified timezone.
 // Zone name follows the TZ environment variable format (e.g. 'America/New_York').
 type ClockOffsetTimezone string
+
+// ClockOffsetLocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.
+type ClockOffsetLocalTime bool
 
 // Represents the clock and timers of a vmi.
 // +kubebuilder:pruning:PreserveUnknownFields

@@ -104,6 +104,22 @@ var _ = Describe("Converter", func() {
 			expectedClock := `<Clock offset="timezone" timezone="America/New_York"></Clock>`
 			Expect(string(data)).To(Equal(expectedClock))
 		})
+		It("Should set LocalTime attribute", func() {
+			clock := &v1.Clock{
+				ClockOffset: v1.ClockOffset{
+					LocalTime: (*v1.ClockOffsetLocalTime)(True()),
+				},
+				Timer: &v1.Timer{},
+			}
+
+			var convertClock api.Clock
+			Convert_v1_Clock_To_api_Clock(clock, &convertClock)
+			data, err := xml.MarshalIndent(convertClock, "", "  ")
+			Expect(err).ToNot(HaveOccurred())
+
+			expectedClock := `<Clock offset="localtime"></Clock>`
+			Expect(string(data)).To(Equal(expectedClock))
+		})
 	})
 
 	Context("with v1.Disk", func() {
