@@ -292,6 +292,7 @@ func computePodSecurityContext(vmi *v1.VirtualMachineInstance, seccomp *k8sv1.Se
 		psc.RunAsUser = &nonRootUser
 		psc.RunAsGroup = &nonRootUser
 		psc.RunAsNonRoot = pointer.Bool(true)
+		psc.FSGroup = &nonRootUser
 	} else {
 		rootUser := int64(util.RootUser)
 		psc.RunAsUser = &rootUser
@@ -436,16 +437,16 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 	// Make sure the compute container is always the first since the mutating webhook shipped with the sriov operator
 	// for adding the requested resources to the pod will add them to the first container of the list
 	containers := []k8sv1.Container{compute}
-	containersDisks := containerdisk.GenerateContainers(vmi, imageIDs, containerDisks, virtBinDir)
+	containersDisks := containerdisk.GenerateContainers(vmi, t.clusterConfig, imageIDs, containerDisks, virtBinDir)
 	containers = append(containers, containersDisks...)
 
-	kernelBootContainer := containerdisk.GenerateKernelBootContainer(vmi, imageIDs, containerDisks, virtBinDir)
+	kernelBootContainer := containerdisk.GenerateKernelBootContainer(vmi, t.clusterConfig, imageIDs, containerDisks, virtBinDir)
 	if kernelBootContainer != nil {
 		log.Log.Object(vmi).Infof("kernel boot container generated")
 		containers = append(containers, *kernelBootContainer)
 	}
 
-	virtiofsContainers := generateVirtioFSContainers(vmi, t.launcherImage)
+	virtiofsContainers := generateVirtioFSContainers(vmi, t.launcherImage, t.clusterConfig)
 	if virtiofsContainers != nil {
 		containers = append(containers, virtiofsContainers...)
 	}
@@ -454,7 +455,7 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 		containers = append(
 			containers,
 			newSidecarContainerRenderer(
-				sidecarContainerName(i), vmi, sidecarResources(vmi), requestedHookSidecar, userId).Render(requestedHookSidecar.Command))
+				sidecarContainerName(i), vmi, sidecarResources(vmi, t.clusterConfig), requestedHookSidecar, userId).Render(requestedHookSidecar.Command))
 	}
 
 	podAnnotations, err := generatePodAnnotations(vmi)
@@ -478,13 +479,13 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, i
 			initContainers,
 			t.newInitContainerRenderer(vmi,
 				initContainerVolumeMount(),
-				initContainerResourceRequirementsForVMI(vmi),
+				initContainerResourceRequirementsForVMI(vmi, v1.ContainerDisk, t.clusterConfig),
 				userId).Render(initContainerCommand))
 
 		// this causes containerDisks to be pre-pulled before virt-launcher starts.
-		initContainers = append(initContainers, containerdisk.GenerateInitContainers(vmi, imageIDs, containerDisks, virtBinDir)...)
+		initContainers = append(initContainers, containerdisk.GenerateInitContainers(vmi, t.clusterConfig, imageIDs, containerDisks, virtBinDir)...)
 
-		kernelBootInitContainer := containerdisk.GenerateKernelBootInitContainer(vmi, imageIDs, containerDisks, virtBinDir)
+		kernelBootInitContainer := containerdisk.GenerateKernelBootInitContainer(vmi, t.clusterConfig, imageIDs, containerDisks, virtBinDir)
 		if kernelBootInitContainer != nil {
 			initContainers = append(initContainers, *kernelBootInitContainer)
 		}
@@ -678,6 +679,7 @@ func (t *templateService) newVolumeRenderer(vmi *v1.VirtualMachineInstance, name
 		withVMIConfigVolumes(vmi.Spec.Domain.Devices.Disks, vmi.Spec.Volumes),
 		withVMIVolumes(t.persistentVolumeClaimStore, vmi.Spec.Volumes, vmi.Status.VolumeStatus),
 		withAccessCredentials(vmi.Spec.AccessCredentials),
+		withTPM(vmi),
 	}
 	if len(requestedHookSidecarList) != 0 {
 		volumeOpts = append(volumeOpts, withSidecarVolumes(requestedHookSidecarList))
@@ -771,7 +773,7 @@ func (t *templateService) RenderHotplugAttachmentPodTemplate(volumes []*v1.Volum
 					Name:      hotplugDisk,
 					Image:     t.launcherImage,
 					Command:   command,
-					Resources: hotplugContainerResourceRequirementsForVMI(vmi),
+					Resources: hotplugContainerResourceRequirementsForVMI(vmi, t.clusterConfig),
 					SecurityContext: &k8sv1.SecurityContext{
 						AllowPrivilegeEscalation: pointer.Bool(false),
 						RunAsNonRoot:             pointer.Bool(true),
@@ -909,7 +911,7 @@ func (t *templateService) RenderHotplugAttachmentTriggerPodTemplate(volume *v1.V
 					Name:      hotplugDisk,
 					Image:     t.launcherImage,
 					Command:   command,
-					Resources: hotplugContainerResourceRequirementsForVMI(vmi),
+					Resources: hotplugContainerResourceRequirementsForVMI(vmi, t.clusterConfig),
 					SecurityContext: &k8sv1.SecurityContext{
 						AllowPrivilegeEscalation: pointer.Bool(false),
 						RunAsNonRoot:             pointer.Bool(true),

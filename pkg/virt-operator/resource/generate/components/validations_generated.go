@@ -1012,6 +1012,54 @@ var CRDsValidation map[string]string = map[string]string{
                 version:
                   type: string
               type: object
+            supportContainerResources:
+              description: SupportContainerResources specifies the resource requirements
+                for various types of supporting containers such as container disks/virtiofs/sidecars
+                and hotplug attachment pods. If omitted a sensible default will be
+                supplied.
+              items:
+                description: SupportContainerResources are used to specify the cpu/memory
+                  request and limits for the containers that support various features
+                  of Virtual Machines. These containers are usually idle and don't
+                  require a lot of memory or cpu.
+                properties:
+                  resources:
+                    description: ResourceRequirements describes the compute resource
+                      requirements.
+                    properties:
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: 'Limits describes the maximum amount of compute
+                          resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: 'Requests describes the minimum amount of compute
+                          resources required. If Requests is omitted for a container,
+                          it defaults to Limits if that is explicitly specified, otherwise
+                          to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                        type: object
+                    type: object
+                  type:
+                    type: string
+                required:
+                - resources
+                - type
+                type: object
+              type: array
+              x-kubernetes-list-map-keys:
+              - type
+              x-kubernetes-list-type: map
             supportedGuestAgentVersions:
               description: deprecated
               items:
@@ -1041,6 +1089,11 @@ var CRDsValidation map[string]string = map[string]string{
               type: object
             virtualMachineInstancesPerNode:
               type: integer
+            vmStateStorageClass:
+              description: VMStateStorageClass is the name of the storage class to
+                use for the PVCs created to preserve VM state, like TPM. The storage
+                class must support RWX in filesystem mode.
+              type: string
             webhookConfiguration:
               description: ReloadableComponentConfiguration holds all generic k8s
                 configuration options which can be reloaded by components without
@@ -5412,6 +5465,12 @@ var CRDsValidation map[string]string = map[string]string{
                           type: object
                         tpm:
                           description: Whether to emulate a TPM device.
+                          properties:
+                            persistent:
+                              description: Persistent indicates the state of the TPM
+                                device should be kept accross reboots Defaults to
+                                false
+                              type: boolean
                           type: object
                         useVirtioTransitional:
                           description: Fall back to legacy virtio 0.9 support if virtio
@@ -7636,6 +7695,11 @@ var CRDsValidation map[string]string = map[string]string{
             preferredTPM:
               description: PreferredTPM optionally defines the preferred TPM device
                 to be used.
+              properties:
+                persistent:
+                  description: Persistent indicates the state of the TPM device should
+                    be kept accross reboots Defaults to false
+                  type: boolean
               type: object
             preferredUseVirtioTransitional:
               description: PreferredUseVirtioTransitional optionally defines the preferred
@@ -9693,6 +9757,11 @@ var CRDsValidation map[string]string = map[string]string{
                   type: object
                 tpm:
                   description: Whether to emulate a TPM device.
+                  properties:
+                    persistent:
+                      description: Persistent indicates the state of the TPM device
+                        should be kept accross reboots Defaults to false
+                      type: boolean
                   type: object
                 useVirtioTransitional:
                   description: Fall back to legacy virtio 0.9 support if virtio bus
@@ -12212,6 +12281,11 @@ var CRDsValidation map[string]string = map[string]string{
                   type: object
                 tpm:
                   description: Whether to emulate a TPM device.
+                  properties:
+                    persistent:
+                      description: Persistent indicates the state of the TPM device
+                        should be kept accross reboots Defaults to false
+                      type: boolean
                   type: object
                 useVirtioTransitional:
                   description: Fall back to legacy virtio 0.9 support if virtio bus
@@ -14326,6 +14400,12 @@ var CRDsValidation map[string]string = map[string]string{
                           type: object
                         tpm:
                           description: Whether to emulate a TPM device.
+                          properties:
+                            persistent:
+                              description: Persistent indicates the state of the TPM
+                                device should be kept accross reboots Defaults to
+                                false
+                              type: boolean
                           type: object
                         useVirtioTransitional:
                           description: Fall back to legacy virtio 0.9 support if virtio
@@ -18323,6 +18403,12 @@ var CRDsValidation map[string]string = map[string]string{
                                   type: object
                                 tpm:
                                   description: Whether to emulate a TPM device.
+                                  properties:
+                                    persistent:
+                                      description: Persistent indicates the state
+                                        of the TPM device should be kept accross reboots
+                                        Defaults to false
+                                      type: boolean
                                   type: object
                                 useVirtioTransitional:
                                   description: Fall back to legacy virtio 0.9 support
@@ -19974,6 +20060,11 @@ var CRDsValidation map[string]string = map[string]string{
             preferredTPM:
               description: PreferredTPM optionally defines the preferred TPM device
                 to be used.
+              properties:
+                persistent:
+                  description: Persistent indicates the state of the TPM device should
+                    be kept accross reboots Defaults to false
+                  type: boolean
               type: object
             preferredUseVirtioTransitional:
               description: PreferredUseVirtioTransitional optionally defines the preferred
@@ -23049,6 +23140,12 @@ var CRDsValidation map[string]string = map[string]string{
                                       type: object
                                     tpm:
                                       description: Whether to emulate a TPM device.
+                                      properties:
+                                        persistent:
+                                          description: Persistent indicates the state
+                                            of the TPM device should be kept accross
+                                            reboots Defaults to false
+                                          type: boolean
                                       type: object
                                     useVirtioTransitional:
                                       description: Fall back to legacy virtio 0.9

@@ -83,10 +83,7 @@ container_image(
         "@io_bazel_rules_go//go/platform:linux_arm64": "arm64",
         "//conditions:default": "amd64",
     }),
-    base = select({
-        "@io_bazel_rules_go//go/platform:linux_arm64": "@fedora_aarch64//image",
-        "//conditions:default": "@fedora//image",
-    }),
+    base = "//:passwd-image",
     directory = "/",
     files = [
         ":conformance-config.json",
@@ -177,6 +174,7 @@ go_test(
         "//pkg/hooks/v1alpha1:go_default_library",
         "//pkg/hooks/v1alpha2:go_default_library",
         "//pkg/network/dns:go_default_library",
+        "//pkg/storage/backend-storage:go_default_library",
         "//pkg/testutils:go_default_library",
         "//pkg/util:go_default_library",
         "//pkg/util/cluster:go_default_library",
@@ -192,6 +190,7 @@ go_test(
         "//pkg/virt-controller/watch/topology:go_default_library",
         "//pkg/virt-handler:go_default_library",
         "//pkg/virt-handler/cgroup:go_default_library",
+        "//pkg/virt-handler/cmd-client:go_default_library",
         "//pkg/virt-handler/device-manager:go_default_library",
         "//pkg/virt-handler/node-labeller/util:go_default_library",
         "//pkg/virt-launcher/virtwrap/api:go_default_library",

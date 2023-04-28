@@ -437,6 +437,25 @@ func (v *VirtualMachineInstance) IsRealtimeEnabled() bool {
 	return v.Spec.Domain.CPU != nil && v.Spec.Domain.CPU.Realtime != nil
 }
 
+// IsHighPerformanceVMI returns true if the VMI is considered as high performance.
+// A VMI is considered as high performance if one of the following is true:
+// - the vmi requests a dedicated cpu
+// - the realtime flag is enabled
+// - the vmi requests hugepages
+func (v *VirtualMachineInstance) IsHighPerformanceVMI() bool {
+	if v.Spec.Domain.CPU != nil {
+		if v.Spec.Domain.CPU.DedicatedCPUPlacement || v.Spec.Domain.CPU.Realtime != nil {
+			return true
+		}
+	}
+
+	if v.Spec.Domain.Memory != nil && v.Spec.Domain.Memory.Hugepages != nil {
+		return true
+	}
+
+	return false
+}
+
 type VirtualMachineInstanceConditionType string
 
 // These are valid conditions of VMIs.
@@ -917,6 +936,14 @@ const (
 	// MigrationTargetReadyTimestamp indicates the time at which the target node
 	// detected that the VMI became active on the target during live migration.
 	MigrationTargetReadyTimestamp string = "kubevirt.io/migration-target-ready-timestamp"
+
+	// FreePageReportingDisabledAnnotation indicates if the the vmi wants to explicitly disable
+	// the freePageReporting feature of the memballooning.
+	// This annotation only allows to opt-out from freePageReporting in those cases where it is
+	// enabled (no high performance vmis).
+	// This annotation does not allow to enable freePageReporting for high performance vmis,
+	// in which freePageReporting is always disabled.
+	FreePageReportingDisabledAnnotation string = "kubevirt.io/free-page-reporting-disabled"
 )
 
 func NewVMI(name string, uid types.UID) *VirtualMachineInstance {
@@ -2267,6 +2294,11 @@ type KubeVirtConfiguration struct {
 	// If not set, the default is 1.
 	AdditionalGuestMemoryOverheadRatio *string `json:"additionalGuestMemoryOverheadRatio,omitempty"`
 
+	// +listType=map
+	// +listMapKey=type
+	// SupportContainerResources specifies the resource requirements for various types of supporting containers such as container disks/virtiofs/sidecars and hotplug attachment pods. If omitted a sensible default will be supplied.
+	SupportContainerResources []SupportContainerResources `json:"supportContainerResources,omitempty"`
+
 	// deprecated
 	SupportedGuestAgentVersions    []string                          `json:"supportedGuestAgentVersions,omitempty"`
 	MemBalloonStatsPeriod          *uint32                           `json:"memBalloonStatsPeriod,omitempty"`
@@ -2281,6 +2313,10 @@ type KubeVirtConfiguration struct {
 	HandlerConfiguration           *ReloadableComponentConfiguration `json:"handlerConfiguration,omitempty"`
 	TLSConfiguration               *TLSConfiguration                 `json:"tlsConfiguration,omitempty"`
 	SeccompConfiguration           *SeccompConfiguration             `json:"seccompConfiguration,omitempty"`
+
+	// VMStateStorageClass is the name of the storage class to use for the PVCs created to preserve VM state, like TPM.
+	// The storage class must support RWX in filesystem mode.
+	VMStateStorageClass string `json:"vmStateStorageClass,omitempty"`
 }
 
 type SMBiosConfiguration struct {
@@ -2289,6 +2325,25 @@ type SMBiosConfiguration struct {
 	Version      string `json:"version,omitempty"`
 	Sku          string `json:"sku,omitempty"`
 	Family       string `json:"family,omitempty"`
+}
+
+type SupportContainerType string
+
+const (
+	// HotplugAttachment is the container resources of the hotplug attachment pod used to hotplug a disk
+	HotplugAttachment SupportContainerType = "hotplug-disk"
+	// ContainerDisk is the container resources used to attach a container disk to the Virtual Machine
+	ContainerDisk SupportContainerType = "container-disk"
+	// VirtioFS is the container resources used to attach a virtio-fs volume to the Virtual Machine
+	VirtioFS SupportContainerType = "virtiofs"
+	// SideCar is the container resources for a side car
+	SideCar SupportContainerType = "sidecar"
+)
+
+// SupportContainerResources are used to specify the cpu/memory request and limits for the containers that support various features of Virtual Machines. These containers are usually idle and don't require a lot of memory or cpu.
+type SupportContainerResources struct {
+	Type      SupportContainerType       `json:"type"`
+	Resources k8sv1.ResourceRequirements `json:"resources"`
 }
 
 type TLSProtocolVersion string

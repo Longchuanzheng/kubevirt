@@ -476,8 +476,9 @@ type TPM struct {
 }
 
 type TPMBackend struct {
-	Type    string `xml:"type,attr"`
-	Version string `xml:"version,attr"`
+	Type            string `xml:"type,attr"`
+	Version         string `xml:"version,attr"`
+	PersistentState string `xml:"persistent_state,attr,omitempty"`
 }
 
 // RedirectedDevice describes a device to be redirected
@@ -1049,10 +1050,11 @@ type Stats struct {
 }
 
 type MemBalloon struct {
-	Model   string            `xml:"model,attr"`
-	Stats   *Stats            `xml:"stats,omitempty"`
-	Address *Address          `xml:"address,omitempty"`
-	Driver  *MemBalloonDriver `xml:"driver,omitempty"`
+	Model             string            `xml:"model,attr"`
+	Stats             *Stats            `xml:"stats,omitempty"`
+	Address           *Address          `xml:"address,omitempty"`
+	Driver            *MemBalloonDriver `xml:"driver,omitempty"`
+	FreePageReporting string            `xml:"freePageReporting,attr,omitempty"`
 }
 
 type MemBalloonDriver struct {

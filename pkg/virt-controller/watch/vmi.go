@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	backendstorage "kubevirt.io/kubevirt/pkg/storage/backend-storage"
+
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	k8sv1 "k8s.io/api/core/v1"
@@ -80,6 +82,9 @@ const (
 	// FailedHandOverPodReason is added in an event and in a vmi controller condition
 	// when transferring the pod ownership from the controller to virt-hander fails.
 	FailedHandOverPodReason = "FailedHandOver"
+	// FailedBackendStorageCreateReason is added in an event when posting a dynamically
+	// generated dataVolume to the cluster fails.
+	FailedBackendStorageCreateReason = "FailedBackendStorageCreate"
 	// SuccessfulHandOverPodReason is added in an event
 	// when the pod ownership transfer from the controller to virt-hander succeeds.
 	SuccessfulHandOverPodReason = "SuccessfulHandOver"
@@ -183,6 +188,7 @@ func NewVMIController(templateService services.TemplateService,
 	})
 
 	c.pvcInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addPVC,
 		UpdateFunc: c.updatePVC,
 	})
 
@@ -192,6 +198,10 @@ func NewVMIController(templateService services.TemplateService,
 type syncError interface {
 	error
 	Reason() string
+	// RequiresRequeue indicates if the sync error should trigger a requeue, or
+	// if information should just be added to the sync condition and a regular controller
+	// wakeup will resolve the situation.
+	RequiresRequeue() bool
 }
 
 type syncErrorImpl struct {
@@ -205,6 +215,27 @@ func (e *syncErrorImpl) Error() string {
 
 func (e *syncErrorImpl) Reason() string {
 	return e.reason
+}
+
+func (e *syncErrorImpl) RequiresRequeue() bool {
+	return true
+}
+
+type informalSyncError struct {
+	err    error
+	reason string
+}
+
+func (i informalSyncError) Error() string {
+	return i.err.Error()
+}
+
+func (i informalSyncError) Reason() string {
+	return i.reason
+}
+
+func (i informalSyncError) RequiresRequeue() bool {
+	return false
 }
 
 type VMIController struct {
@@ -345,7 +376,7 @@ func (c *VMIController) execute(key string) error {
 		return err
 	}
 
-	if syncErr != nil {
+	if syncErr != nil && syncErr.RequiresRequeue() {
 		return syncErr
 	}
 
@@ -1118,6 +1149,14 @@ func (c *VMIController) sync(vmi *virtv1.VirtualMachineInstance, pod *k8sv1.Pod,
 		return syncErr
 	}
 
+	err := backendstorage.CreateIfNeeded(vmi, c.clusterConfig, c.clientset)
+	if err != nil {
+		return &syncErrorImpl{
+			err:    err,
+			reason: FailedBackendStorageCreateReason,
+		}
+	}
+
 	if !podExists(pod) {
 		// If we came ever that far to detect that we already created a pod, we don't create it again
 		if !vmi.IsUnprocessed() {
@@ -1131,9 +1170,10 @@ func (c *VMIController) sync(vmi *virtv1.VirtualMachineInstance, pod *k8sv1.Pod,
 
 		// ensure that all dataVolumes associated with the VMI are ready before creating the pod
 		if !dataVolumesReady {
-			log.Log.V(3).Object(vmi).Infof("Delaying pod creation while DataVolume populates")
+			log.Log.V(3).Object(vmi).Infof("Delaying pod creation while DataVolume populates or while we wait for PVCs to appear.")
 			return nil
 		}
+
 		var templatePod *k8sv1.Pod
 		var err error
 		if isWaitForFirstConsumer {
@@ -1144,7 +1184,7 @@ func (c *VMIController) sync(vmi *virtv1.VirtualMachineInstance, pod *k8sv1.Pod,
 		}
 		if _, ok := err.(storagetypes.PvcNotFoundError); ok {
 			c.recorder.Eventf(vmi, k8sv1.EventTypeWarning, FailedPvcNotFoundReason, failedToRenderLaunchManifestErrFormat, err)
-			return &syncErrorImpl{fmt.Errorf(failedToRenderLaunchManifestErrFormat, err), FailedPvcNotFoundReason}
+			return &informalSyncError{fmt.Errorf(failedToRenderLaunchManifestErrFormat, err), FailedPvcNotFoundReason}
 		} else if err != nil {
 			return &syncErrorImpl{fmt.Errorf(failedToRenderLaunchManifestErrFormat, err), FailedCreatePodReason}
 		}
@@ -1228,12 +1268,14 @@ func (c *VMIController) handleSyncDataVolumes(vmi *virtv1.VirtualMachineInstance
 		if volume.VolumeSource.DataVolume != nil || volume.VolumeSource.PersistentVolumeClaim != nil {
 			volumeReady, volumeWffc, err := storagetypes.VolumeReadyToAttachToNode(vmi.Namespace, volume, dataVolumes, c.dataVolumeInformer, c.pvcInformer)
 			if err != nil {
-				// Keep existing behavior of missing PVC = ready. This in turn triggers template render, which sets conditions and events, and fails appropriately
 				if _, ok := err.(storagetypes.PvcNotFoundError); ok {
-					continue
+					// due to the eventually consistent nature of controllers, CDI or users may need some time to actually crate the PVC.
+					// We wait for them to appear.
+					c.recorder.Eventf(vmi, k8sv1.EventTypeNormal, FailedPvcNotFoundReason, "PVC %s/%s does not exist, waiting for it to appear", vmi.Namespace, storagetypes.PVCNameFromVirtVolume(&volume))
+					return false, false, &informalSyncError{err: fmt.Errorf("PVC %s/%s does not exist, waiting for it to appear", vmi.Namespace, storagetypes.PVCNameFromVirtVolume(&volume)), reason: FailedPvcNotFoundReason}
 				} else {
 					c.recorder.Eventf(vmi, k8sv1.EventTypeWarning, FailedPvcNotFoundReason, "Error determining if volume is ready: %v", err)
-					return false, false, &syncErrorImpl{fmt.Errorf("Error determining if volume is ready %v", err), FailedDataVolumeImportReason}
+					return false, false, &syncErrorImpl{err: fmt.Errorf("Error determining if volume is ready %v", err), reason: FailedDataVolumeImportReason}
 				}
 			}
 			wffc = wffc || volumeWffc
@@ -1243,6 +1285,22 @@ func (c *VMIController) handleSyncDataVolumes(vmi *virtv1.VirtualMachineInstance
 	}
 
 	return ready, wffc, nil
+}
+
+func (c *VMIController) addPVC(obj interface{}) {
+	pvc := obj.(*k8sv1.PersistentVolumeClaim)
+	if pvc.DeletionTimestamp != nil {
+		return
+	}
+
+	vmis, err := c.listVMIsMatchingDV(pvc.Namespace, pvc.Name)
+	if err != nil {
+		return
+	}
+	for _, vmi := range vmis {
+		log.Log.V(4).Object(pvc).Infof("PVC created for vmi %s", vmi.Name)
+		c.enqueueVirtualMachine(vmi)
+	}
 }
 
 func (c *VMIController) updatePVC(old, cur interface{}) {
@@ -1290,6 +1348,7 @@ func (c *VMIController) addDataVolume(obj interface{}) {
 		c.enqueueVirtualMachine(vmi)
 	}
 }
+
 func (c *VMIController) updateDataVolume(old, cur interface{}) {
 	curDataVolume := cur.(*cdiv1.DataVolume)
 	oldDataVolume := old.(*cdiv1.DataVolume)

@@ -16,6 +16,8 @@ import (
 	. "kubevirt.io/kubevirt/pkg/virtctl/create/preference"
 	"kubevirt.io/kubevirt/tests/clientcmd"
 	"kubevirt.io/kubevirt/tests/decorators"
+	"kubevirt.io/kubevirt/tests/framework/cleanup"
+	"kubevirt.io/kubevirt/tests/testsuite"
 	"kubevirt.io/kubevirt/tests/util"
 )
 
@@ -36,13 +38,16 @@ var _ = Describe("[sig-compute] create preference", decorators.SigCompute, func(
 		case *instancetypev1alpha2.VirtualMachinePreference:
 			ExpectWithOffset(1, namespaced).To(BeTrue(), "expected VirtualMachinePreference to be created")
 			ExpectWithOffset(1, obj.Kind).To(Equal("VirtualMachinePreference"))
-			preference, err := virtClient.VirtualMachinePreference(util.NamespaceTestDefault).Create(context.Background(), (*instancetypev1alpha2.VirtualMachinePreference)(obj), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+			preference, err := virtClient.VirtualMachinePreference(util.NamespaceTestDefault).Create(context.Background(), (*instancetypev1alpha2.VirtualMachinePreference)(obj), metav1.CreateOptions{})
 			ExpectWithOffset(1, err).ToNot(HaveOccurred())
 			return &preference.Spec, nil
 		case *instancetypev1alpha2.VirtualMachineClusterPreference:
 			ExpectWithOffset(1, namespaced).To(BeFalse(), "expected VirtualMachineClusterPreference to be created")
 			ExpectWithOffset(1, obj.Kind).To(Equal("VirtualMachineClusterPreference"))
-			clusterPreference, err := virtClient.VirtualMachineClusterPreference().Create(context.Background(), (*instancetypev1alpha2.VirtualMachineClusterPreference)(obj), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+			obj.Labels = map[string]string{
+				cleanup.TestLabelForNamespace(testsuite.GetTestNamespace(obj)): "",
+			}
+			clusterPreference, err := virtClient.VirtualMachineClusterPreference().Create(context.Background(), (*instancetypev1alpha2.VirtualMachineClusterPreference)(obj), metav1.CreateOptions{})
 			ExpectWithOffset(1, err).ToNot(HaveOccurred())
 			return &clusterPreference.Spec, nil
 		default:
@@ -51,7 +56,7 @@ var _ = Describe("[sig-compute] create preference", decorators.SigCompute, func(
 	}
 
 	Context("should create valid preference manifest", func() {
-		DescribeTable("without arguments", func(namespacedFlag string, namespaced bool) {
+		DescribeTable("[test_id:9836]without arguments", func(namespacedFlag string, namespaced bool) {
 			bytes, err := clientcmd.NewRepeatableVirtctlCommandWithOut(create, Preference, namespacedFlag)()
 			Expect(err).ToNot(HaveOccurred())
 
@@ -62,7 +67,7 @@ var _ = Describe("[sig-compute] create preference", decorators.SigCompute, func(
 			Entry("VirtualMachineClusterPreference", "", false),
 		)
 
-		DescribeTable("when machine type defined", func(namespacedFlag, machineType string, namespaced bool) {
+		DescribeTable("[test_id:9837]when machine type defined", func(namespacedFlag, machineType string, namespaced bool) {
 			bytes, err := clientcmd.NewRepeatableVirtctlCommandWithOut(create, Preference, namespacedFlag,
 				setFlag(MachineTypeFlag, machineType),
 			)()
@@ -76,7 +81,7 @@ var _ = Describe("[sig-compute] create preference", decorators.SigCompute, func(
 			Entry("VirtualMachineClusterPreference", "", "pc-q35-2.10", false),
 		)
 
-		DescribeTable("when preferred storageClass defined", func(namespacedFlag, PreferredStorageClass string, namespaced bool) {
+		DescribeTable("[test_id:9838]when preferred storageClass defined", func(namespacedFlag, PreferredStorageClass string, namespaced bool) {
 			bytes, err := clientcmd.NewRepeatableVirtctlCommandWithOut(create, Preference, namespacedFlag,
 				setFlag(VolumeStorageClassFlag, PreferredStorageClass),
 			)()
@@ -90,7 +95,7 @@ var _ = Describe("[sig-compute] create preference", decorators.SigCompute, func(
 			Entry("VirtualMachineClusterPreference", "", "local", false),
 		)
 
-		DescribeTable("when cpu topology defined", func(namespacedFlag, CPUTopology string, namespaced bool, topology instancetypev1alpha2.PreferredCPUTopology) {
+		DescribeTable("[test_id:9839]when cpu topology defined", func(namespacedFlag, CPUTopology string, namespaced bool, topology instancetypev1alpha2.PreferredCPUTopology) {
 			bytes, err := clientcmd.NewRepeatableVirtctlCommandWithOut(create, Preference, namespacedFlag,
 				setFlag(CPUTopologyFlag, CPUTopology),
 			)()

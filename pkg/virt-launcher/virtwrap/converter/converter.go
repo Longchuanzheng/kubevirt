@@ -118,6 +118,7 @@ type ConverterContext struct {
 	Topology              *cmdv1.Topology
 	ExpandDisksEnabled    bool
 	UseLaunchSecurity     bool
+	FreePageReporting     bool
 }
 
 func contains(volumes []string, name string) bool {
@@ -1160,6 +1161,7 @@ func ConvertV1ToAPIBalloning(source *v1.Devices, ballooning *api.MemBalloon, c *
 				IOMMU: "on",
 			}
 		}
+		ballooning.FreePageReporting = boolToOnOff(&c.FreePageReporting, false)
 	}
 }
 
@@ -1824,6 +1826,9 @@ func Convert_v1_VirtualMachineInstance_To_api_Domain(vmi *v1.VirtualMachineInsta
 					Version: "2.0",
 				},
 			},
+		}
+		if vmi.Spec.Domain.Devices.TPM.Persistent != nil && *vmi.Spec.Domain.Devices.TPM.Persistent {
+			domain.Spec.Devices.TPMs[0].Backend.PersistentState = "yes"
 		}
 	}
 

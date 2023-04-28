@@ -26,7 +26,12 @@ import (
 	"net"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+
+	backendstorage "kubevirt.io/kubevirt/pkg/storage/backend-storage"
+
+	cmdclient "kubevirt.io/kubevirt/pkg/virt-handler/cmd-client"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	k8sv1 "k8s.io/api/core/v1"
@@ -215,6 +220,7 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 	causes = append(causes, validateLaunchSecurity(field, spec, config)...)
 	causes = append(causes, validateVSOCK(field, spec, config)...)
 	causes = append(causes, validatePersistentReservation(field, spec, config)...)
+	causes = append(causes, validatePersistentState(field, spec, config)...)
 
 	return causes
 }
@@ -1627,6 +1633,25 @@ func ValidateVirtualMachineInstanceMetadata(field *k8sfield.Path, metadata *meta
 		})
 	}
 
+	if threadCountStr, exists := metadata.Annotations[cmdclient.MultiThreadedQemuMigrationAnnotation]; exists {
+		threadCount, err := strconv.Atoi(threadCountStr)
+		invalidEntry := field.Child("annotations", cmdclient.MultiThreadedQemuMigrationAnnotation).String()
+
+		if err != nil {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("cannot parse %s to int: %s, invalid entry %s", threadCountStr, err.Error(), invalidEntry),
+				Field:   field.Child("annotations").String(),
+			})
+		} else if threadCount <= 1 {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("thread count (%s) must be larger than 1. invalid entry %s", threadCountStr, invalidEntry),
+				Field:   field.Child("annotations").String(),
+			})
+		}
+	}
+
 	return causes
 }
 
@@ -2568,6 +2593,22 @@ func validatePersistentReservation(field *k8sfield.Path, spec *v1.VirtualMachine
 			Type:    metav1.CauseTypeFieldValueInvalid,
 			Message: fmt.Sprintf("%s feature gate is not enabled in kubevirt-config", virtconfig.PersistentReservation),
 			Field:   field.Child("domain", "devices", "disks", "luns", "reservation").String(),
+		})
+	}
+
+	return
+}
+
+func validatePersistentState(field *k8sfield.Path, spec *v1.VirtualMachineInstanceSpec, config *virtconfig.ClusterConfig) (causes []metav1.StatusCause) {
+	if !backendstorage.HasPersistentTPMDevice(spec) {
+		return
+	}
+
+	if !config.VMPersistentStateEnabled() {
+		causes = append(causes, metav1.StatusCause{
+			Type:    metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("%s feature gate is not enabled in kubevirt-config", virtconfig.VMPersistentState),
+			Field:   field.Child("domain", "devices", "tpm", "persistent").String(),
 		})
 	}
 
