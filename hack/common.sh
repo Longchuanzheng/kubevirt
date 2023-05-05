@@ -28,6 +28,8 @@ if [ -f cluster-up/hack/common.sh ]; then
 fi
 
 export GOFLAGS="$GOFLAGS -mod=vendor"
+GO_PROXY=${GO_PROXY:-"https://goproxy.cn,direct"}
+go env -w GOPROXY=${GO_PROXY}
 
 KUBEVIRT_DIR="$(
     cd "$(dirname "$BASH_SOURCE[0]")/../"

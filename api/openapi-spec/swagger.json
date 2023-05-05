@@ -15610,6 +15610,10 @@
     "description": "Represents the clock and timers of a vmi.",
     "type": "object",
     "properties": {
+     "localtime": {
+      "description": "LocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+      "$ref": "#/definitions/v1.ClockOffsetLocalTime"
+     },
      "timer": {
       "description": "Timer specifies whih timers are attached to the vmi.",
       "$ref": "#/definitions/v1.Timer"
@@ -15628,6 +15632,10 @@
     "description": "Exactly one of its members must be set.",
     "type": "object",
     "properties": {
+     "localtime": {
+      "description": "LocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+      "$ref": "#/definitions/v1.ClockOffsetLocalTime"
+     },
      "timezone": {
       "description": "Timezone sets the guest clock to the specified timezone. Zone name follows the TZ environment variable format (e.g. 'America/New_York').",
       "type": "string"
@@ -15635,6 +15643,19 @@
      "utc": {
       "description": "UTC sets the guest clock to UTC on each boot. If an offset is specified, guest changes to the clock will be kept during reboots and are not reset.",
       "$ref": "#/definitions/v1.ClockOffsetUTC"
+     }
+    }
+   },
+   "v1.ClockOffsetLocalTime": {
+    "description": "ClockOffsetLocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+    "type": "object",
+    "required": [
+     "disableMigrate"
+    ],
+    "properties": {
+     "disableMigrate": {
+      "description": "DisableMigrate determines whether the vm can be migrated, because it is not known whether other nodes have the same timezone with the source node.",
+      "type": "boolean"
      }
     }
    },

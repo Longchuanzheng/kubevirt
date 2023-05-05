@@ -317,6 +317,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/api/core/v1.ClientPassthroughDevices":                                           schema_kubevirtio_api_core_v1_ClientPassthroughDevices(ref),
 		"kubevirt.io/api/core/v1.Clock":                                                              schema_kubevirtio_api_core_v1_Clock(ref),
 		"kubevirt.io/api/core/v1.ClockOffset":                                                        schema_kubevirtio_api_core_v1_ClockOffset(ref),
+		"kubevirt.io/api/core/v1.ClockOffsetLocalTime":                                               schema_kubevirtio_api_core_v1_ClockOffsetLocalTime(ref),
 		"kubevirt.io/api/core/v1.ClockOffsetUTC":                                                     schema_kubevirtio_api_core_v1_ClockOffsetUTC(ref),
 		"kubevirt.io/api/core/v1.CloudInitConfigDriveSource":                                         schema_kubevirtio_api_core_v1_CloudInitConfigDriveSource(ref),
 		"kubevirt.io/api/core/v1.CloudInitNoCloudSource":                                             schema_kubevirtio_api_core_v1_CloudInitNoCloudSource(ref),
@@ -14958,6 +14959,12 @@ func schema_kubevirtio_api_core_v1_Clock(ref common.ReferenceCallback) common.Op
 							Format:      "",
 						},
 					},
+					"localtime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+							Ref:         ref("kubevirt.io/api/core/v1.ClockOffsetLocalTime"),
+						},
+					},
 					"timer": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Timer specifies whih timers are attached to the vmi.",
@@ -14968,7 +14975,7 @@ func schema_kubevirtio_api_core_v1_Clock(ref common.ReferenceCallback) common.Op
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/api/core/v1.ClockOffsetUTC", "kubevirt.io/api/core/v1.Timer"},
+			"kubevirt.io/api/core/v1.ClockOffsetLocalTime", "kubevirt.io/api/core/v1.ClockOffsetUTC", "kubevirt.io/api/core/v1.Timer"},
 	}
 }
 
@@ -14992,11 +14999,38 @@ func schema_kubevirtio_api_core_v1_ClockOffset(ref common.ReferenceCallback) com
 							Format:      "",
 						},
 					},
+					"localtime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+							Ref:         ref("kubevirt.io/api/core/v1.ClockOffsetLocalTime"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/api/core/v1.ClockOffsetUTC"},
+			"kubevirt.io/api/core/v1.ClockOffsetLocalTime", "kubevirt.io/api/core/v1.ClockOffsetUTC"},
+	}
+}
+
+func schema_kubevirtio_api_core_v1_ClockOffsetLocalTime(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ClockOffsetLocalTime sets the the guest clock to be synchronized to the host's configured timezone when booted, if any.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"disableMigrate": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DisableMigrate determines whether the vm can be migrated, because it is not known whether other nodes have the same timezone with the source node.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"disableMigrate"},
+			},
+		},
 	}
 }
 
