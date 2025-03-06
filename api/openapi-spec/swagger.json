@@ -16066,6 +16066,10 @@
      "kind": {
       "description": "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
       "type": "string"
+     },
+     "pmSuspendToDisk": {
+      "description": "Indicates that VM will be stoped with memery save in disk.",
+      "type": "boolean"
      }
     }
    },
@@ -17380,6 +17384,10 @@
      },
      "startStrategy": {
       "description": "StartStrategy can be set to \"Paused\" if Virtual Machine should be started in paused state.",
+      "type": "string"
+     },
+     "stopStrategy": {
+      "description": "StopStrategy can be set to \"PMSuspendToDisk\" if Virtual Machine should be stop with memery save in disk.",
       "type": "string"
      },
      "subdomain": {

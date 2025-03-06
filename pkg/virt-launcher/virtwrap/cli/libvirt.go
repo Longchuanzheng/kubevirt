@@ -536,6 +536,7 @@ type VirDomain interface {
 	SetVcpusFlags(vcpu uint, flags libvirt.DomainVcpuFlags) error
 	GetLaunchSecurityInfo(flags uint32) (*libvirt.DomainLaunchSecurityParameters, error)
 	SetLaunchSecurityState(params *libvirt.DomainLaunchSecurityStateParameters, flags uint32) error
+	PMSuspendForDuration(target libvirt.NodeSuspendTarget, duration uint64, flags uint32) error
 }
 
 func NewConnection(uri string, user string, pass string, checkInterval time.Duration) (Connection, error) {
@@ -608,6 +609,14 @@ func IsDown(domState libvirt.DomainState) bool {
 func IsPaused(domState libvirt.DomainState) bool {
 	switch domState {
 	case libvirt.DOMAIN_PAUSED:
+		return true
+
+	}
+	return false
+}
+func IsRunning(domState libvirt.DomainState) bool {
+	switch domState {
+	case libvirt.DOMAIN_RUNNING:
 		return true
 
 	}

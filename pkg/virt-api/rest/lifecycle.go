@@ -176,6 +176,7 @@ func (app *SubresourceAPIApp) StopVMRequestHandler(request *restful.Request, res
 	name := request.PathParameter("name")
 	namespace := request.PathParameter("namespace")
 
+	stopSuspendToDisk := false
 	bodyStruct := &v1.StopOptions{}
 	if request.Request.Body != nil {
 		err := yaml.NewYAMLOrJSONDecoder(request.Request.Body, 1024).Decode(&bodyStruct)
@@ -186,8 +187,8 @@ func (app *SubresourceAPIApp) StopVMRequestHandler(request *restful.Request, res
 			writeError(errors.NewBadRequest(fmt.Sprintf(unmarshalRequestErrFmt, err)), response)
 			return
 		}
+		stopSuspendToDisk = bodyStruct.SuspendToDisk
 	}
-
 	vm, statusErr := app.fetchVirtualMachine(name, namespace)
 	if statusErr != nil {
 		writeError(statusErr, response)
@@ -238,7 +239,7 @@ func (app *SubresourceAPIApp) StopVMRequestHandler(request *restful.Request, res
 			return
 		}
 		// same behavior as RunStrategyManual
-		patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct)
+		patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct, stopSuspendToDisk)
 		if err != nil {
 			return
 		}
@@ -249,14 +250,130 @@ func (app *SubresourceAPIApp) StopVMRequestHandler(request *restful.Request, res
 		}
 		// pass the buck and ask virt-controller to stop the VM. this way the
 		// VM will retain RunStrategy = manual
-		patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct)
+		patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct, stopSuspendToDisk)
 		if err != nil {
 			return
 		}
 	case v1.RunStrategyAlways, v1.RunStrategyOnce:
-		bodyString := getRunningJson(vm, false)
-		log.Log.Object(vm).V(4).Infof(patchingVMFmt, bodyString)
-		_, patchErr = app.virtCli.VirtualMachine(namespace).Patch(context.Background(), vm.GetName(), patchType, []byte(bodyString), metav1.PatchOptions{DryRun: bodyStruct.DryRun})
+		if stopSuspendToDisk {
+			patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct, stopSuspendToDisk)
+			if err != nil {
+				return
+			}
+		} else {
+			bodyString := getRunningJson(vm, false)
+			log.Log.Object(vm).V(4).Infof(patchingVMFmt, bodyString)
+			_, patchErr = app.virtCli.VirtualMachine(namespace).Patch(context.Background(), vm.GetName(), patchType, []byte(bodyString), metav1.PatchOptions{DryRun: bodyStruct.DryRun})
+
+		}
+	}
+
+	if patchErr != nil {
+		if strings.Contains(patchErr.Error(), jsonpatchTestErr) {
+			writeError(errors.NewConflict(v1.Resource("virtualmachine"), name, patchErr), response)
+		} else {
+			writeError(errors.NewInternalError(patchErr), response)
+		}
+		return
+	}
+
+	response.WriteHeader(http.StatusAccepted)
+}
+
+func (app *SubresourceAPIApp) PMSuspendToDiskVMRequestHandler(request *restful.Request, response *restful.Response) {
+	// RunStrategyHalted         -> force stop if grace period in request is shorter than before, otherwise doesn't make sense
+	// RunStrategyManual         -> send stop request
+	// RunStrategyAlways         -> spec.running = false
+	// RunStrategyRerunOnFailure -> send stop request
+	// RunStrategyOnce           -> spec.running = false
+
+	name := request.PathParameter("name")
+	namespace := request.PathParameter("namespace")
+
+	bodyStruct := &v1.StopOptions{}
+	if request.Request.Body != nil {
+		err := yaml.NewYAMLOrJSONDecoder(request.Request.Body, 1024).Decode(&bodyStruct)
+		switch err {
+		case io.EOF, nil:
+			break
+		default:
+			writeError(errors.NewBadRequest(fmt.Sprintf(unmarshalRequestErrFmt, err)), response)
+			return
+		}
+	}
+
+	vm, statusErr := app.fetchVirtualMachine(name, namespace)
+	if statusErr != nil {
+		writeError(statusErr, response)
+		return
+	}
+
+	runStrategy, err := vm.RunStrategy()
+	if err != nil {
+		writeError(errors.NewInternalError(err), response)
+		return
+	}
+
+	hasVMI := true
+	vmi, err := app.virtCli.VirtualMachineInstance(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil && errors.IsNotFound(err) {
+		hasVMI = false
+	} else if err != nil {
+		writeError(errors.NewInternalError(err), response)
+		return
+	}
+
+	//var oldGracePeriodSeconds int64
+	//patchType := types.MergePatchType
+	var patchErr error
+	//if hasVMI && !vmi.IsFinal() && bodyStruct.GracePeriod != nil {
+	//	// used for stopping a VM with RunStrategyHalted
+	//	if vmi.Spec.TerminationGracePeriodSeconds != nil {
+	//		oldGracePeriodSeconds = *vmi.Spec.TerminationGracePeriodSeconds
+	//	}
+	//
+	//	bodyString := getUpdateTerminatingSecondsGracePeriod(*bodyStruct.GracePeriod)
+	//	log.Log.Object(vmi).V(2).Infof("Patching VMI: %s", bodyString)
+	//	_, err = app.virtCli.VirtualMachineInstance(namespace).Patch(context.Background(), vmi.GetName(), patchType, []byte(bodyString), metav1.PatchOptions{DryRun: bodyStruct.DryRun})
+	//	if err != nil {
+	//		writeError(errors.NewInternalError(err), response)
+	//		return
+	//	}
+	//}
+
+	switch runStrategy {
+	case v1.RunStrategyHalted:
+		//should do nothing with Halted
+		if !hasVMI || vmi.IsFinal() {
+			writeError(errors.NewConflict(v1.Resource("virtualmachine"), name, fmt.Errorf(vmNotRunning)), response)
+			return
+		}
+		//if bodyStruct.GracePeriod == nil || (vmi.Spec.TerminationGracePeriodSeconds != nil && *bodyStruct.GracePeriod >= oldGracePeriodSeconds) {
+		//	writeError(errors.NewConflict(v1.Resource("virtualmachine"), name, fmt.Errorf("%v only supports manual stop requests with a shorter graceperiod", v1.RunStrategyHalted)), response)
+		//	return
+		//}
+		// same behavior as RunStrategyManual
+		writeError(errors.NewConflict(v1.Resource("virtualmachine"), name, fmt.Errorf(vmHalted)), response)
+		return
+		//patchErr, err = app.patchVMStatusStopped(vmi, vm, response, bodyStruct)
+		//if err != nil {
+		//	return
+		//}
+	case v1.RunStrategyRerunOnFailure, v1.RunStrategyManual, v1.RunStrategyAlways, v1.RunStrategyOnce:
+		if !hasVMI || vmi.IsFinal() {
+			writeError(errors.NewConflict(v1.Resource("virtualmachine"), name, fmt.Errorf(vmNotRunning)), response)
+			return
+		}
+		// pass the buck and ask virt-controller to stop the VM. this way the
+		// VM will retain RunStrategy = manual
+		patchErr, err = app.patchVMStatusPMSuspendToDisk(vmi, vm, response, bodyStruct)
+		if err != nil {
+			return
+		}
+		//case v1.RunStrategyAlways, v1.RunStrategyOnce:
+		//	bodyString := getRunningJson(vm, false)
+		//	log.Log.Object(vm).V(4).Infof(patchingVMFmt, bodyString)
+		//	_, patchErr = app.virtCli.VirtualMachine(namespace).Patch(context.Background(), vm.GetName(), patchType, []byte(bodyString), metav1.PatchOptions{DryRun: bodyStruct.DryRun})
 	}
 
 	if patchErr != nil {
@@ -616,9 +733,33 @@ func (app *SubresourceAPIApp) findPod(namespace string, vmi *v1.VirtualMachineIn
 	return "", nil
 }
 
-func (app *SubresourceAPIApp) patchVMStatusStopped(vmi *v1.VirtualMachineInstance, vm *v1.VirtualMachine, response *restful.Response, bodyStruct *v1.StopOptions) (error, error) {
+func (app *SubresourceAPIApp) patchVMStatusStopped(vmi *v1.VirtualMachineInstance, vm *v1.VirtualMachine, response *restful.Response, bodyStruct *v1.StopOptions, stopPMSuspendToDisk bool) (error, error) {
+	stopChangeRequestData := make(map[string]string)
+	patchBytes := []byte{}
+	var err error
+	if stopPMSuspendToDisk {
+		stopChangeRequestData[v1.StopRequestDataPMSuspendToDiskKey] = v1.StopRequestDataPMSuspendToDiskTrue
+		patchBytes, err = getChangeRequestJson(vm,
+			v1.VirtualMachineStateChangeRequest{Action: v1.StopRequest, UID: &vmi.UID,
+				Data: stopChangeRequestData,
+			})
+
+	} else {
+		patchBytes, err = getChangeRequestJson(vm,
+			v1.VirtualMachineStateChangeRequest{Action: v1.StopRequest, UID: &vmi.UID})
+	}
+	if err != nil {
+		writeError(errors.NewInternalError(err), response)
+		return nil, err
+	}
+	log.Log.Object(vm).V(4).Infof(patchingVMStatusFmt, string(patchBytes))
+	_, err = app.virtCli.VirtualMachine(vm.Namespace).PatchStatus(context.Background(), vm.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{DryRun: bodyStruct.DryRun})
+	return err, nil
+}
+
+func (app *SubresourceAPIApp) patchVMStatusPMSuspendToDisk(vmi *v1.VirtualMachineInstance, vm *v1.VirtualMachine, response *restful.Response, bodyStruct *v1.StopOptions) (error, error) {
 	patchBytes, err := getChangeRequestJson(vm,
-		v1.VirtualMachineStateChangeRequest{Action: v1.StopRequest, UID: &vmi.UID})
+		v1.VirtualMachineStateChangeRequest{Action: v1.PMSuspendToDiskRequest, UID: &vmi.UID})
 	if err != nil {
 		writeError(errors.NewInternalError(err), response)
 		return nil, err

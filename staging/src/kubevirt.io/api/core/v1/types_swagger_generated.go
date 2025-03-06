@@ -28,6 +28,7 @@ func (VirtualMachineInstanceSpec) SwaggerDoc() map[string]string {
 		"topologySpreadConstraints":     "TopologySpreadConstraints describes how a group of VMIs will be spread across a given topology\ndomains. K8s scheduler will schedule VMI pods in a way which abides by the constraints.\n+optional\n+patchMergeKey=topologyKey\n+patchStrategy=merge\n+listType=map\n+listMapKey=topologyKey\n+listMapKey=whenUnsatisfiable",
 		"evictionStrategy":              "EvictionStrategy describes the strategy to follow when a node drain occurs.\nThe possible options are:\n- \"None\": No action will be taken, according to the specified 'RunStrategy' the VirtualMachine will be restarted or shutdown.\n- \"LiveMigrate\": the VirtualMachineInstance will be migrated instead of being shutdown.\n- \"LiveMigrateIfPossible\": the same as \"LiveMigrate\" but only if the VirtualMachine is Live-Migratable, otherwise it will behave as \"None\".\n- \"External\": the VirtualMachineInstance will be protected by a PDB and `vmi.Status.EvacuationNodeName` will be set on eviction. This is mainly useful for cluster-api-provider-kubevirt (capk) which needs a way for VMI's to be blocked from eviction, yet signal capk that eviction has been called on the VMI so the capk controller can handle tearing the VMI down. Details can be found in the commit description https://github.com/kubevirt/kubevirt/commit/c1d77face705c8b126696bac9a3ee3825f27f1fa.\n+optional",
 		"startStrategy":                 "StartStrategy can be set to \"Paused\" if Virtual Machine should be started in paused state.\n\n+optional",
+		"stopStrategy":                  "StopStrategy can be set to \"PMSuspendToDisk\" if Virtual Machine should be stop with memery save in disk.\n\n+optional",
 		"terminationGracePeriodSeconds": "Grace period observed after signalling a VirtualMachineInstance to stop after which the VirtualMachineInstance is force terminated.",
 		"volumes":                       "List of volumes that can be mounted by disks belonging to the vmi.\n+kubebuilder:validation:MaxItems:=256",
 		"livenessProbe":                 "Periodic probe of VirtualMachineInstance liveness.\nVirtualmachineInstances will be stopped if the probe fails.\nCannot be updated.\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes\n+optional",
@@ -636,9 +637,10 @@ func (UnpauseOptions) SwaggerDoc() map[string]string {
 
 func (StopOptions) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":            "StopOptions may be provided when deleting an API object.",
-		"gracePeriod": "this updates the VMIs terminationGracePeriodSeconds during shutdown\n+optional",
-		"dryRun":      "When present, indicates that modifications should not be\npersisted. An invalid or unrecognized dryRun directive will\nresult in an error response and no further processing of the\nrequest. Valid values are:\n- All: all dry run stages will be processed\n+optional\n+listType=atomic",
+		"":                "StopOptions may be provided when deleting an API object.",
+		"gracePeriod":     "this updates the VMIs terminationGracePeriodSeconds during shutdown\n+optional",
+		"pmSuspendToDisk": "Indicates that VM will be stoped with memery save in disk.\n+optional",
+		"dryRun":          "When present, indicates that modifications should not be\npersisted. An invalid or unrecognized dryRun directive will\nresult in an error response and no further processing of the\nrequest. Valid values are:\n- All: all dry run stages will be processed\n+optional\n+listType=atomic",
 	}
 }
 

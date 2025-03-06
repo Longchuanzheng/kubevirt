@@ -1155,6 +1155,12 @@ func (l *LibvirtDomainManager) SyncVMI(vmi *v1.VirtualMachineInstance, allowEmul
 			return nil, err
 		}
 		logger.Info("Domain unpaused.")
+	case cli.IsRunning(domState) && vmi.ShouldPMSuspendToDisk():
+		if err := dom.PMSuspendForDuration(libvirt.NODE_SUSPEND_TARGET_DISK, 0, 0); err != nil {
+			logger.Reason(err).Error("PMSuspend the VirtualMachineInstance to disk failed.")
+			return nil, err
+		}
+		logger.Info("Domain PMSuspend to disk.")
 	}
 
 	oldSpec, err := getDomainSpec(dom)

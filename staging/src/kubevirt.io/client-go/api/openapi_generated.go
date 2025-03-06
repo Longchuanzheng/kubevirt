@@ -24217,6 +24217,13 @@ func schema_kubevirtio_api_core_v1_StopOptions(ref common.ReferenceCallback) com
 							Format:      "int64",
 						},
 					},
+					"pmSuspendToDisk": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Indicates that VM will be stoped with memery save in disk.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"dryRun": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -26528,6 +26535,13 @@ func schema_kubevirtio_api_core_v1_VirtualMachineInstanceSpec(ref common.Referen
 					"startStrategy": {
 						SchemaProps: spec.SchemaProps{
 							Description: "StartStrategy can be set to \"Paused\" if Virtual Machine should be started in paused state.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"stopStrategy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "StopStrategy can be set to \"PMSuspendToDisk\" if Virtual Machine should be stop with memery save in disk.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

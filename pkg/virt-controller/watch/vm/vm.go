@@ -75,9 +75,10 @@ import (
 )
 
 const (
-	fetchingRunStrategyErrFmt = "Error fetching RunStrategy: %v"
-	fetchingVMKeyErrFmt       = "Error fetching vmKey: %v"
-	startingVMIFailureFmt     = "Failure while starting VMI: %v"
+	fetchingRunStrategyErrFmt   = "Error fetching RunStrategy: %v"
+	fetchingVMKeyErrFmt         = "Error fetching vmKey: %v"
+	startingVMIFailureFmt       = "Failure while starting VMI: %v"
+	pmSuspendToDiskVMFailureFmt = "Failure while suspending to disk VM: %v"
 )
 
 type CloneAuthFunc func(dv *cdiv1.DataVolume, requestNamespace, requestName string, proxy cdiv1.AuthorizationHelperProxy, saNamespace, saName string) (bool, string, error)
@@ -86,6 +87,7 @@ type CloneAuthFunc func(dv *cdiv1.DataVolume, requestNamespace, requestName stri
 const (
 	stoppingVmMsg                             = "Stopping VM"
 	startingVmMsg                             = "Starting VM"
+	pmSuspendToDiskVmMsg                      = "pmSuspendToDisk VM"
 	failedExtractVmkeyFromVmErrMsg            = "Failed to extract vmKey from VirtualMachine."
 	failedCreateCRforVmErrMsg                 = "Failed to create controller revision for VirtualMachine."
 	failedProcessDeleteNotificationErrMsg     = "Failed to process delete notification"
@@ -930,6 +932,9 @@ func (c *Controller) syncRunStrategy(vm *virtv1.VirtualMachine, vmi *virtv1.Virt
 		// For this RunStrategy, a VMI should always be running. If a StateChangeRequest
 		// asks to stop a VMI, a new one must be immediately re-started.
 		if vmi != nil {
+			if vmi.Status.Phase == virtv1.Running && hasPMSuspendToDiskRequest(vm) {
+				return c.updateVMToHaltedRunStrategy(vm)
+			}
 			var forceRestart bool
 			if forceRestart = hasStopRequestForVMI(vm, vmi); forceRestart {
 				log.Log.Object(vm).Infof("processing forced restart request for VMI with phase %s and VM runStrategy: %s", vmi.Status.Phase, runStrategy)
@@ -978,7 +983,7 @@ func (c *Controller) syncRunStrategy(vm *virtv1.VirtualMachine, vmi *virtv1.Virt
 			vmiFailed := vmi.Status.Phase == virtv1.Failed
 			vmiSucceeded := vmi.Status.Phase == virtv1.Succeeded
 
-			if vmi.DeletionTimestamp == nil && (forceStop || vmiFailed || vmiSucceeded) {
+			if vmi.DeletionTimestamp == nil && (forceStop || vmiFailed || vmiSucceeded) && !hasPMSuspendToDiskRequest(vm) {
 				// For RerunOnFailure, this controller should only restart the VirtualMachineInstance if it failed.
 				log.Log.Object(vm).Infof("%s with VMI in phase %s and VM runStrategy: %s", stoppingVmMsg, vmi.Status.Phase, runStrategy)
 				vm, err = c.stopVMI(vm, vmi)
@@ -1062,6 +1067,11 @@ func (c *Controller) syncRunStrategy(vm *virtv1.VirtualMachine, vmi *virtv1.Virt
 			}
 			return vm, nil
 		}
+		if vmi.Status.Phase == virtv1.Running && hasPMSuspendToDiskRequest(vm) {
+			log.Log.Object(vm).Infof("%s in process with VMI still in phase %s", pmSuspendToDiskVmMsg, vmi.Status.Phase)
+			return vm, nil
+		}
+
 		log.Log.Object(vm).Infof("%s with VMI in phase %s due to runStrategy: %s", stoppingVmMsg, vmi.Status.Phase, runStrategy)
 		vm, err = c.stopVMI(vm, vmi)
 		if err != nil {
@@ -1069,7 +1079,11 @@ func (c *Controller) syncRunStrategy(vm *virtv1.VirtualMachine, vmi *virtv1.Virt
 		}
 		return vm, nil
 	case virtv1.RunStrategyOnce:
-		if vmi == nil {
+		if vmi != nil {
+			if vmi.Status.Phase == virtv1.Running && hasPMSuspendToDiskRequest(vm) {
+				return c.updateVMToHaltedRunStrategy(vm)
+			}
+		} else {
 			log.Log.Object(vm).Infof("%s due to start request and runStrategy: %s", startingVmMsg, runStrategy)
 
 			vm, err = c.startVMI(vm)
@@ -1159,6 +1173,21 @@ func (c *Controller) cleanupRestartRequired(vm *virtv1.VirtualMachine) (*virtv1.
 	}
 
 	return vm, c.deleteVMRevisions(vm)
+}
+
+func (c *Controller) updateVMToHaltedRunStrategy(vm *virtv1.VirtualMachine) (*virtv1.VirtualMachine, common.SyncError) {
+	vmCopy := vm.DeepCopy()
+	runStrategy := virtv1.RunStrategyHalted
+	running := false
+
+	if vmCopy.Spec.RunStrategy != nil {
+		vmCopy.Spec.RunStrategy = &runStrategy
+	} else {
+		vmCopy.Spec.Running = &running
+	}
+	log.Log.Object(vm).Infof("%s with runStrategy: %s, change to Halted runStrategy", pmSuspendToDiskVmMsg, runStrategy)
+	_, err := c.clientset.VirtualMachine(vmCopy.Namespace).Update(context.Background(), vmCopy, metav1.UpdateOptions{})
+	return vm, common.NewSyncError(fmt.Errorf(pmSuspendToDiskVMFailureFmt, err), failedUpdateErrorReason)
 }
 
 func (c *Controller) startVMI(vm *virtv1.VirtualMachine) (*virtv1.VirtualMachine, error) {
@@ -1817,6 +1846,10 @@ func (c *Controller) setupVMIFromVM(vm *virtv1.VirtualMachine) *virtv1.VirtualMa
 		strategy := virtv1.StartStrategyPaused
 		vmi.Spec.StartStrategy = &strategy
 	}
+	if hasPMSuspendToDiskRequest(vm) {
+		strategy := virtv1.StopStrategyPMSuspendToDisk
+		vmi.Spec.StopStrategy = &strategy
+	}
 
 	// prevent from retriggering memory dump after shutdown if memory dump is complete
 	if memorydump.HasCompleted(vm) {
@@ -1864,6 +1897,19 @@ func hasStopRequestForVMI(vm *virtv1.VirtualMachine, vmi *virtv1.VirtualMachineI
 	return stateChange.Action == virtv1.StopRequest &&
 		stateChange.UID != nil &&
 		*stateChange.UID == vmi.UID
+}
+
+func hasPMSuspendToDiskRequest(vm *virtv1.VirtualMachine) bool {
+	if len(vm.Status.StateChangeRequests) == 0 {
+		return false
+	}
+
+	stateChange := vm.Status.StateChangeRequests[0]
+
+	PMSuspendToDiskValue, hasPMSuspendToDisk := stateChange.Data[virtv1.StartRequestDataPausedKey]
+	return stateChange.Action == virtv1.StopRequest &&
+		hasPMSuspendToDisk &&
+		PMSuspendToDiskValue == virtv1.StopRequestDataPMSuspendToDiskTrue
 }
 
 // no special meaning, randomly generated on my box.

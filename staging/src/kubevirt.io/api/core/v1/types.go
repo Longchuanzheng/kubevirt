@@ -76,6 +76,12 @@ const (
 	StartStrategyPaused StartStrategy = "Paused"
 )
 
+type StopStrategy string
+
+const (
+	StopStrategyPMSuspendToDisk StopStrategy = "PMSuspendToDisk"
+)
+
 // VirtualMachineInstanceSpec is a description of a VirtualMachineInstance.
 type VirtualMachineInstanceSpec struct {
 
@@ -121,6 +127,10 @@ type VirtualMachineInstanceSpec struct {
 	//
 	// +optional
 	StartStrategy *StartStrategy `json:"startStrategy,omitempty"`
+	// StopStrategy can be set to "PMSuspendToDisk" if Virtual Machine should be stop with memery save in disk.
+	//
+	// +optional
+	StopStrategy *StopStrategy `json:"stopStrategy,omitempty"`
 	// Grace period observed after signalling a VirtualMachineInstance to stop after which the VirtualMachineInstance is force terminated.
 	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
 	// List of volumes that can be mounted by disks belonging to the vmi.
@@ -510,6 +520,10 @@ func (v *VirtualMachineInstance) WantsToHaveQOSGuaranteed() bool {
 // ShouldStartPaused returns true if VMI should be started in paused state
 func (v *VirtualMachineInstance) ShouldStartPaused() bool {
 	return v.Spec.StartStrategy != nil && *v.Spec.StartStrategy == StartStrategyPaused
+}
+
+func (v *VirtualMachineInstance) ShouldPMSuspendToDisk() bool {
+	return v.Spec.StopStrategy != nil && *v.Spec.StopStrategy == StopStrategyPMSuspendToDisk
 }
 
 func (v *VirtualMachineInstance) IsRealtimeEnabled() bool {
@@ -1597,8 +1611,9 @@ type StateChangeRequestAction string
 
 // These are the currently defined state change requests
 const (
-	StartRequest StateChangeRequestAction = "Start"
-	StopRequest  StateChangeRequestAction = "Stop"
+	StartRequest           StateChangeRequestAction = "Start"
+	StopRequest            StateChangeRequestAction = "Stop"
+	PMSuspendToDiskRequest StateChangeRequestAction = "PMSuspendToDisk"
 )
 
 // VirtualMachinePrintableStatus is a human readable, high-level representation of the status of the virtual machine.
@@ -2291,8 +2306,10 @@ type UnpauseOptions struct {
 }
 
 const (
-	StartRequestDataPausedKey  string = "paused"
-	StartRequestDataPausedTrue string = "true"
+	StartRequestDataPausedKey          string = "paused"
+	StartRequestDataPausedTrue         string = "true"
+	StopRequestDataPMSuspendToDiskKey  string = "pmSuspendToDisk"
+	StopRequestDataPMSuspendToDiskTrue string = "true"
 )
 
 // StopOptions may be provided when deleting an API object.
@@ -2302,6 +2319,10 @@ type StopOptions struct {
 	// this updates the VMIs terminationGracePeriodSeconds during shutdown
 	// +optional
 	GracePeriod *int64 `json:"gracePeriod,omitempty" protobuf:"varint,1,opt,name=gracePeriod"`
+
+	// Indicates that VM will be stoped with memery save in disk.
+	// +optional
+	SuspendToDisk bool `json:"suspendToDisk,omitempty" protobuf:"varint,7,opt,name=suspendToDisk"`
 	// When present, indicates that modifications should not be
 	// persisted. An invalid or unrecognized dryRun directive will
 	// result in an error response and no further processing of the

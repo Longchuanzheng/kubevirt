@@ -7302,6 +7302,10 @@ var CRDsValidation map[string]string = map[string]string{
                   description: StartStrategy can be set to "Paused" if Virtual Machine
                     should be started in paused state.
                   type: string
+                stopStrategy:
+                  description: StopStrategy can be set to "PMSuspendToDisk" if Virtual
+                    Machine should be stop with memery save in disk.
+                  type: string
                 subdomain:
                   description: |-
                     If specified, the fully qualified vmi hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
@@ -12573,6 +12577,10 @@ var CRDsValidation map[string]string = map[string]string{
         startStrategy:
           description: StartStrategy can be set to "Paused" if Virtual Machine should
             be started in paused state.
+          type: string
+        stopStrategy:
+          description: StopStrategy can be set to "PMSuspendToDisk" if Virtual Machine
+            should be stop with memery save in disk.
           type: string
         subdomain:
           description: |-
@@ -18217,6 +18225,10 @@ var CRDsValidation map[string]string = map[string]string{
                   description: StartStrategy can be set to "Paused" if Virtual Machine
                     should be started in paused state.
                   type: string
+                stopStrategy:
+                  description: StopStrategy can be set to "PMSuspendToDisk" if Virtual
+                    Machine should be stop with memery save in disk.
+                  type: string
                 subdomain:
                   description: |-
                     If specified, the fully qualified vmi hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
@@ -22725,6 +22737,11 @@ var CRDsValidation map[string]string = map[string]string{
                         startStrategy:
                           description: StartStrategy can be set to "Paused" if Virtual
                             Machine should be started in paused state.
+                          type: string
+                        stopStrategy:
+                          description: StopStrategy can be set to "PMSuspendToDisk"
+                            if Virtual Machine should be stop with memery save in
+                            disk.
                           type: string
                         subdomain:
                           description: |-
@@ -27920,6 +27937,11 @@ var CRDsValidation map[string]string = map[string]string{
                             startStrategy:
                               description: StartStrategy can be set to "Paused" if
                                 Virtual Machine should be started in paused state.
+                              type: string
+                            stopStrategy:
+                              description: StopStrategy can be set to "PMSuspendToDisk"
+                                if Virtual Machine should be stop with memery save
+                                in disk.
                               type: string
                             subdomain:
                               description: |-

@@ -31,21 +31,23 @@ const (
 	notDefinedGracePeriod = -1
 	dryRunCommandUsage    = "--dry-run=false: Flag used to set whether to perform a dry run or not. If true the command will be executed without performing any changes."
 
-	dryRunArg      = "dry-run"
-	forceArg       = "force"
-	gracePeriodArg = "grace-period"
-	persistArg     = "persist"
+	dryRunArg        = "dry-run"
+	forceArg         = "force"
+	gracePeriodArg   = "grace-period"
+	persistArg       = "persist"
+	suspendToDiskArg = "suspend-to-disk"
 
 	YAML = "yaml"
 	JSON = "json"
 )
 
 var (
-	forceRestart bool
-	gracePeriod  int64
-	volumeName   string
-	persist      bool
-	dryRun       bool
+	forceRestart  bool
+	gracePeriod   int64
+	volumeName    string
+	persist       bool
+	dryRun        bool
+	suspendToDisk bool
 )
 
 type Command struct {
