@@ -22,6 +22,7 @@ package agentpoller
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
 
@@ -111,4 +112,3 @@ var _ = Describe("Qemu agent poller", func() {
 		})
 	})
 })
-
